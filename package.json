@@ -1,0 +1,20 @@
+{
+  "name": "com.simular.persist",
+  "version": "1.0.0",
+  "displayName": "Simular.Persist",
+  "description": "Package for handling and managing save data persistence.",
+  "unity": "2022.3",
+  "unityRelease": "20f1",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+ },
+ "keywords": [
+    "save",
+    "system",
+    "persist",
+    "persistence"
+  ],
+  "author": {
+    "name": "Simular Technologies, LLC."
+  }
+}
