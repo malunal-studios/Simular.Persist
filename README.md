@@ -44,7 +44,7 @@ public class MyMonoBehaviour : MonoBehaviour {
 
 ### Loading
 
-Below is an example of loading data from disk, given that the approriate setting have been configured on the `PersistenceManager`.
+Below is an example of loading data from disk, given that the approriate settings have been configured on the `PersistenceManager`.
 
 ```cs
 using UnityEngine;
