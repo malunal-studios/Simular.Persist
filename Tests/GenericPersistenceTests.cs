@@ -49,6 +49,7 @@ public class GenericPersistenceTests {
         Assert.IsFalse(directoryFound, "Directory existed during test.");
     }
 
+
     [UnityTest]
     public IEnumerator Persister_WhenConfigured_PerformsCriticalTasks() {
         var threadRunning = false;
@@ -125,5 +126,195 @@ public class GenericPersistenceTests {
         Assert.IsTrue(deleteArgsCache.BackupCount == 0, "Unexpected backup value.");
         Assert.IsTrue(deleteArgsCache.BackupIndex == -1, "Unexpected backup value.");
     #endregion
+    }
+
+
+    [UnityTest]
+    public IEnumerator Persister_WhenEventThrows_CallsOnUnhandled() {
+        var threadRunning = false;
+        var persister = new Persister(new() {
+            persistenceRoot = "testing"
+        });
+
+        var unhandledArgsCache = new Persister.UnhandledEventArgs();
+        void onUnhandledHandler(object p, Persister.UnhandledEventArgs args) {
+            unhandledArgsCache = args;
+            threadRunning = false;
+        }
+
+        Persister.OnUnhandled += onUnhandledHandler;
+
+    #region Unhandled Load Exception
+        void onLoadHandler(object p, Persister.LoadEventArgs args) {
+            Persister.OnLoad -= onLoadHandler;
+            throw new Exception("My unhandled exception");
+        }
+
+        threadRunning = true;
+        Persister.OnLoad += onLoadHandler;
+        persister.Load();
+        while (threadRunning)
+            yield return null;
+        
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.Load,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+    #region Unhandled Load Backup Exception
+        threadRunning = true;
+        Persister.OnLoad += onLoadHandler;
+        persister.LoadBackup();
+        while (threadRunning)
+            yield return null;
+        
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.LoadBackup,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+    #region Unhandled Save Exception
+        void onSaveHandler(object p, EventArgs args) {
+            Persister.OnSave -= onSaveHandler;
+            throw new Exception("My unhandled exception");
+        }
+
+        threadRunning = true;
+        Persister.OnSave += onSaveHandler;
+        persister.Flush();
+        while (threadRunning)
+            yield return null;
+
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.Flush,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+    #region Unhandled Flush Exception
+        void onFlushHandler(object p, Persister.FlushEventArgs args) {
+            Persister.OnFlush -= onFlushHandler;
+            throw new Exception("My unhandled exception");
+        }
+
+        threadRunning = true;
+        Persister.OnFlush += onFlushHandler;
+        persister.Flush();
+        while (threadRunning)
+            yield return null;
+
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.Flush,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+    #region Unhandled Delete Exception
+        void onDeleteHandler(object p, EventArgs args) {
+            Persister.OnDelete -= onDeleteHandler;
+            throw new Exception("My unhandled exception");
+        }
+
+        threadRunning = true;
+        Persister.OnDelete += onDeleteHandler;
+        persister.Delete();
+        while (threadRunning)
+            yield return null;
+
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.Delete,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+    #region Unhandled Delete Backup Exception
+        threadRunning = true;
+        Persister.OnDelete += onDeleteHandler;
+        persister.DeleteBackup(0);
+        while (threadRunning)
+            yield return null;
+        
+        Assert.IsNotNull(
+            unhandledArgsCache.Cause,
+            "Unhandled exception was not caught."
+        );
+
+        Assert.AreEqual(
+            unhandledArgsCache.Cause.Message,
+            "My unhandled exception",
+            "Unhandled exception was not the expected one."
+        );
+        
+        Assert.AreEqual(
+            unhandledArgsCache.Method,
+            PersistenceMethod.DeleteBackup,
+            "Unhandled exception did not come from Load method."
+        );
+    #endregion
+
+        // Cleanup.
+        Persister.OnUnhandled -= onUnhandledHandler;
     }
 }

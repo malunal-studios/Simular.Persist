@@ -56,7 +56,7 @@ public class MyMonoBehaviour : MonoBehaviour {
         // executed from a separate thread and not all Unity functions are
         // thread safe. Debug.Log is luckily.
         Persister.OnLoad += HandleLoad;
-        PersistenceManager.Persister.Load(mayNotExist: true);
+        PersistenceManager.Singleton.Persister.Load(mayNotExist: true);
     }
 
     private void HandleLoad(object persister, Persister.LoadEventArgs loadArgs) {
@@ -82,7 +82,7 @@ public class MyMonoBehviour : MonoBehaviour {
     private void Start() {
         Persister.OnSave += HandleSave;
         Persister.OnFlush += HandleFlush;
-        PersistenceManager.Persister.Flush();
+        PersistenceManager.Singleton.Persister.Flush();
     }
 
     private void HandleSave(object persister, EventArgs _) {
@@ -111,18 +111,49 @@ public class MyMonoBehaviour : MonoBehaviour {
         // Purge deletes all persisted files of a given name.
         // The name is provided in Persister.Settings.persistenceFile.
         Persister.OnDelete += HandleDelete;
-        PersistenceManager.Persister.Purge();
+        PersistenceManager.Singleton.Persister.Purge();
         
         // If you need to delete things manually, you can use the below
         // functions:
-        // PersistenceManager.Persister.Delete();
-        // PersistenceManager.Persister.DeleteBackup(index: 1);
+        // PersistenceManager.Singleton.Persister.Delete();
+        // PersistenceManager.Singleton.Persister.DeleteBackup(index: 1);
     }
 
     private void HandleDelete(object persister, Persister.DeleteEventArgs deleteArgs) {
         if (deleteArgs.Problem == null)
             Debug.Log("Successfully deleted save data");
         else Debug.Log("Failed to delete save data.");
+    }
+}
+```
+
+### Unhandled Exceptions
+
+Sometimes we call things and we forget that they are Unity functions. These pose a risk to our own mental sanity and security, and for this reason, there happens to be a way to catch unhandled exceptions from within persistence events like `Load`, `Flush`, and `Delete`. Below is an example of catching and handling an unhandled exception.
+
+```cs
+using UnityEngine;
+using Simular.Persist;
+
+public class MyMonoBehaviour : MonoBehaviour {
+    [SerializeField]
+    private CanvasGroup m_CanvasGroup;
+
+    private void Start() {
+        Persister.OnLoad += HandleLoad;
+        Persister.OnUnhandled += HandleException;
+        PersistenceManager.Singleton.Persister.Load();
+    }
+
+    private void HandleLoad(object persister, Persister.LoadEventArgs loadArgs) {
+        // ... Do your checks
+        // OOPS, THIS THROWS HAHAHA... I hate unity sometimes
+        m_CanvasGroup.alpha = 1f;
+    }
+
+    private void HandleException(object persister, Persister.UnhandledEventArgs unhandledArgs) {
+        Debug.Log($"Unhandled exception from Persister.{unhandledArgs.Method}");
+        Debug.LogException(unhandledArgs.Cause);
     }
 }
 ```

@@ -1,6 +1,6 @@
 {
   "name": "com.simular.persist",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "displayName": "Simular.Persist",
   "description": "Package for handling and managing save data persistence.",
   "unity": "2022.3",
