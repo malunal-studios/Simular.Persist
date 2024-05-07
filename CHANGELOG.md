@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Persister.OnUnhandled` to allow the catching and handling of exception within persistence events.
+- `Persister.OnUnhandled` to allow the catching and handling of exceptions within persistence events.
 - `Persister.Internal_SafeInvoke` to perform the persistence event unhandled exception catching.
-- Tests verifying the new `Persiter.OnUnhandled` is working from all contexts it is called from.
+- Tests verifying the new `Persister.OnUnhandled` is working from all contexts it is called from.
 
 ## [1.0.1] - 2024-05-06
 
