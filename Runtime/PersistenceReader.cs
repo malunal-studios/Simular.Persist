@@ -2,7 +2,8 @@ using System;
 
 namespace Simular.Persist {
     /// <summary>
-    /// Provides functionality
+    /// Provides functionality for reading data from the <c>Persister</c> after
+    /// it has been loaded from the file system.
     /// </summary>
     public sealed class PersistenceReader {
         public Persister Persister { get; }
@@ -17,7 +18,6 @@ namespace Simular.Persist {
         /// </param>
         public PersistenceReader(Persister persister) {
             Persister = persister;
-            // m_PersistenceBase.Load(); ??
         }
 
 
@@ -80,12 +80,6 @@ namespace Simular.Persist {
         /// deserialized.
         /// </exception>
         public DataT Read<DataT>(string key) {
-            if (!Persister.IsLoaded)
-                throw new PersistException("Persister not loaded");
-
-            if (!Persister.HasKey(key))
-                throw new PersistKeyException(key);
-
             try {
                 return Persister.Deserialize<DataT>(key);
             } catch (Exception cause) {
