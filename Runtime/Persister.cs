@@ -894,7 +894,6 @@ namespace Simular.Persist {
 
             string result;
             try {
-                OnSave?.Invoke(this, EventArgs.Empty);
                 if (!Directory.Exists(m_FileHandler.PersistencePath))
                     Directory.CreateDirectory(m_FileHandler.PersistencePath);
 
