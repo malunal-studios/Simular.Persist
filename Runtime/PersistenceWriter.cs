@@ -38,9 +38,6 @@ namespace Simular.Persist {
         /// otherwise.
         /// </returns>
         public bool TryWrite(string key, object value) {
-            if (!Persister.IsLoaded)
-                return false;
-
             try {
                 Delete(key);
                 Persister.Serialise(key, value);
@@ -69,9 +66,6 @@ namespace Simular.Persist {
         /// serialized.
         /// </exception>
         public void Write(string key, object value) {
-            if (!Persister.IsLoaded)
-                throw new PersistException("Persister not loaded");
-            
             try {
                 Delete(key);
                 Persister.Serialise(key, value);

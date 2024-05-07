@@ -30,10 +30,7 @@ namespace Simular.Persist {
         /// <summary>
         /// The number of known backups for the primary persistence data file.
         /// </summary>
-        public int PersistenceBackups =>
-            Directory.EnumerateFiles(PersistencePath, "*.bkp.*")
-                     .Select(IsSameFile)
-                     .Count();
+        public int PersistenceBackups => FetchBackupCount();
 
         /// <summary>
         /// Checks if there are any persistence backups available in the
@@ -136,6 +133,24 @@ namespace Simular.Persist {
         /// </param>
         public void DeleteBackup(int index) {
             File.Delete(Path.ChangeExtension(PersistenceFile, $".bkp.{index}"));
+        }
+
+
+        // Could throw DirectoryNotFoundException.
+        // That effectively means there are no backups, so we'll catch
+        // and return 0 to reflect that.
+        private int FetchBackupCount() {
+            int result;
+            try {
+                result = Directory
+                    .EnumerateFiles(PersistencePath, "*.bkp.*")
+                    .Select(IsSameFile)
+                    .Count();
+            } catch {
+                result = 0;
+            }
+
+            return result;
         }
 
 

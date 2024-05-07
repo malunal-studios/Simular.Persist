@@ -10,6 +10,7 @@ using UnityEngine.Assertions;
 
 namespace Simular.Persist {
     /// <summary>
+    /// Represents an object which is designed to be persisted.
     /// </summary>
     public sealed class Persister {
         /// <summary>
@@ -146,6 +147,9 @@ namespace Simular.Persist {
             /// The <c>Persister</c> which is saving data that will be flushed
             /// to system disk. 
             /// </param>
+            /// <param name="args">
+            /// Generic event arguments, will almost always be empty.
+            /// </param>
             /// <remarks>
             /// Handling this event is useful for systems where data needs to
             /// be loaded into the <c>Persister</c> cache before it's fully
@@ -154,13 +158,16 @@ namespace Simular.Persist {
             void OnSave(object persister, EventArgs args) { }
 
             /// <summary>
-            /// Called when a <c>Persister</c> loads data from the system disk.
+            /// Called when a <c>Persister</c> loads data from the system disk,
+            /// this includes backups.
             /// </summary>
             /// <param name="persister">
             /// The <c>Persister</c> which loaded the data from system disk.
             /// </param>
             /// <param name="args">
-            /// 
+            /// The arguments passed from the <see cref="Load()"/> thread
+            /// internal function when it completes. Contains information on
+            /// how the function performed and what it performed on.
             /// </param>
             /// <remarks>
             /// Handling this event is useful for systems where data is needed
@@ -175,9 +182,10 @@ namespace Simular.Persist {
             /// <param name="persister">
             /// The <c>Persister</c> which flushed the data to system disk.
             /// </param>
-            /// <param name="exc">
-            /// An exception thrown if the <c>Persister</c> is unable to flush
-            /// the data to disk. Will be null if data was successfully flushed.
+            /// <param name="args">
+            /// The arguments passed from the <see cref="Flush()"/> thread
+            /// internal function when it completes. Contains information on
+            /// how the function performed and what it performed on.
             /// </param>
             /// <remarks>
             /// Handling this event is useful for systems where data persistence
@@ -185,7 +193,26 @@ namespace Simular.Persist {
             /// persisted or not is integral to the function of the application
             /// and it's success or failure needs proper reporting.
             /// </remarks>
-            void OnFlush(Persister persister, PersistException exc) { }
+            void OnFlush(object persister, FlushEventArgs args) { }
+
+            /// <summary>
+            /// Called when a <c>Persister</c> deletes data from the system
+            /// disk, this includes backups.
+            /// </summary>
+            /// <param name="persister">
+            /// The <c>Persister</c> which deleted the data from system disk.
+            /// </param>
+            /// <param name="args">
+            /// The arguments passed from the <see cref="Delete()"/> thread
+            /// internal function when it completes. Contains information on
+            /// how the function performed and what it performed on.
+            /// </param>
+            /// <remarks>
+            /// Handling this event is useful for system which need to detect
+            /// when a file is deleted by <c>Persister</c>. As it may need to
+            /// recreate the file afterwards or report it to the user.
+            /// </remarks>
+            void OnDelete(object persister, DeleteEventArgs args) { }
         }
 
 
@@ -256,7 +283,6 @@ namespace Simular.Persist {
         private Settings m_Settings;
         private FileHandler m_FileHandler;
         private JObject m_Object;
-        private bool m_Dirty;
 
 
         /// <summary>
@@ -308,8 +334,18 @@ namespace Simular.Persist {
 
 
         /// <summary>
-        /// 
+        /// An event which calls listeners who are subscribed to data being
+        /// deleted from disk by a <c>Persister</c>.
         /// </summary>
+        /// <remarks>
+        /// This event is called from a separate thread for performance reasons.
+        /// If you need to access Unity related assets, you won't be able to
+        /// safely. The likelihood is that Unity won't allow you or report a
+        /// warning in the logs that you're doing so. You may need to delegate
+        /// the operations you need performed to another object or design them
+        /// in such a way that they can be detected from the main thread and
+        /// executed when Unity calls the object to update again.
+        /// </remarks>
         public static event EventHandler<DeleteEventArgs> OnDelete;
 
 
@@ -434,13 +470,6 @@ namespace Simular.Persist {
 
 
         /// <summary>
-        /// Checks if the JSON object is not null, indicating that it has been
-        /// loaded from disk.
-        /// </summary>
-        public bool IsLoaded => m_Object != null;
-
-
-        /// <summary>
         /// Default constructor for this class.
         /// </summary>
         /// <param name="settings">
@@ -452,6 +481,7 @@ namespace Simular.Persist {
             if (settings.encryption != EncryptionMethod.None)
                 Assert.IsFalse(string.IsNullOrEmpty(settings.encryptionPhrase));
 
+            m_Object = new JObject();
             m_Settings = settings;
             m_FileHandler = new FileHandler(
                 settings.persistenceRoot,
@@ -512,7 +542,6 @@ namespace Simular.Persist {
         /// </param>
         public void Load(bool mayBeEmpty = false, bool mayNotExist = false) {
             Assert.IsNotNull(m_FileHandler);
-            if (IsLoaded) return;
             ThreadPool.QueueUserWorkItem(_ => Internal_Load(mayBeEmpty, mayNotExist));
         }
 
@@ -575,7 +604,6 @@ namespace Simular.Persist {
         /// </remarks>
         public void Flush() {
             Assert.IsNotNull(m_FileHandler);
-            if (!m_Dirty) return;
             ThreadPool.QueueUserWorkItem(_ => Internal_Flush());
         }
 
@@ -635,7 +663,6 @@ namespace Simular.Persist {
 
         internal void Serialise(string key, object value) {
             m_Object.Add(key, JToken.FromObject(value, M_SERIALIZER));
-            m_Dirty = true;
         }
 
         internal DataT Deserialize<DataT>(string key) {
@@ -678,18 +705,23 @@ namespace Simular.Persist {
                 }
 
                 m_Object = JObject.Parse(result);
-            } catch (FileNotFoundException fileNotFound) {
-                loadArgs.NotFound = true;
-                if (!mayNotExist) {
-                    loadArgs.Problem = new PersistFileException(
-                        m_Settings.persistenceRoot,
-                        m_Settings.persistenceProfile,
-                        m_Settings.persistenceFile,
-                        fileNotFound
-                    );
-                }
             } catch (Exception cause) {
-                loadArgs.Problem = new PersistException("Deserialization Failed", cause); 
+                if (
+                    cause is DirectoryNotFoundException ||
+                    cause is FileNotFoundException
+                ) {
+                    loadArgs.NotFound = true;
+                    if (!mayNotExist) {
+                        loadArgs.Problem = new PersistFileException(
+                            m_Settings.persistenceRoot,
+                            m_Settings.persistenceProfile,
+                            m_Settings.persistenceFile,
+                            cause
+                        );
+                    }
+                } else {
+                    loadArgs.Problem = new PersistException("Deserialization Failed", cause); 
+                }
             }
 
             OnLoad?.Invoke(this, loadArgs);
@@ -715,31 +747,34 @@ namespace Simular.Persist {
             var index = count;
             try {
                 // Reverse iterate backups trying to load one of them.
-                for (/* would have set index here */; index >= 0; --index)
+                for (/* would have set index here */; index >= 0; --index) {
+                    loadArgs.BackupIndex = index;
                     Internal_LoadBackup(mayBeEmpty, index);
+                }
 
                 // Did not read any backups.
                 if (index == -1)
                     loadArgs.Problem = new PersistException("Could not load any backups");
-
-                loadArgs.BackupIndex = index;
-            } catch (FileNotFoundException fileNotFound) {
-                if (mayNotExist) {
-                    loadArgs.Problem = new PersistFileException(
-                        m_Settings.persistenceRoot,
-                        m_Settings.persistenceProfile,
-                        Path.ChangeExtension(m_Settings.persistenceFile, $".bkp.{index}"),
-                        fileNotFound
-                    );
-                }
-
-                loadArgs.BackupIndex = index;
             } catch (PersistFileException persist) {
+                // For empty files when not allowed to skip.
                 loadArgs.Problem = persist;
-                loadArgs.BackupIndex = index;
             } catch (Exception cause) {
-                loadArgs.Problem = new PersistException("Deserialization Failed", cause);
-                loadArgs.BackupIndex = index;
+                if (
+                    cause is DirectoryNotFoundException ||
+                    cause is FileNotFoundException
+                ) {
+                    loadArgs.NotFound = true;
+                    if (!mayNotExist) {
+                        loadArgs.Problem = new PersistFileException(
+                            m_Settings.persistenceRoot,
+                            m_Settings.persistenceProfile,
+                            Path.ChangeExtension(m_Settings.persistenceFile, $".bkp.{index}"),
+                            cause
+                        );
+                    }
+                } else {
+                    loadArgs.Problem = new PersistException("Deserialization Failed", cause);
+                }
             }
 
             OnLoad?.Invoke(this, loadArgs);
@@ -774,8 +809,6 @@ namespace Simular.Persist {
         private void Internal_Flush() {
             // Must call this for on demand save subscribers.
             OnSave?.Invoke(this, EventArgs.Empty);
-            if (!Directory.Exists(m_FileHandler.PersistencePath))
-                Directory.CreateDirectory(m_FileHandler.PersistencePath);
 
             var flushArgs = new FlushEventArgs {
                 Problem     = null,
@@ -785,11 +818,13 @@ namespace Simular.Persist {
 
             string result;
             try {
+                if (!Directory.Exists(m_FileHandler.PersistencePath))
+                    Directory.CreateDirectory(m_FileHandler.PersistencePath);
+
                 result = JsonConvert.SerializeObject(m_Object, M_SERIALIZER_SETTINGS);
                 result = CompressionHandler.Compress(Compression, result);
                 result = EncryptionHandler.Encrypt(Encryption, m_Settings.encryptionPhrase, result);                
                 m_FileHandler.Write(result);
-                m_Dirty = false;
             } catch (Exception cause) {
                 flushArgs.Problem = new PersistException("Serialization Failed", cause);
                 OnFlush?.Invoke(this, flushArgs);
