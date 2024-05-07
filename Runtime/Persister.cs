@@ -118,6 +118,23 @@ namespace Simular.Persist {
 
 
         /// <summary>
+        /// Additional arguments provided when the <see cref="OnUnhandled"/>
+        /// event is triggered by any given <c>Persister</c>.
+        /// </summary>
+        public class UnhandledEventArgs : EventArgs {
+            /// <summary>
+            /// The exception that was thrown.
+            /// </summary>
+            public Exception Cause { get; set; }
+
+            /// <summary>
+            /// The method that the exception was thrown in.
+            /// </summary>
+            public PersistenceMethod Method { get; set; }
+        }
+
+
+        /// <summary>
         /// <para>
         /// Defines an interface for listening to major events on a
         /// <c>Persister</c>.
@@ -213,6 +230,20 @@ namespace Simular.Persist {
             /// recreate the file afterwards or report it to the user.
             /// </remarks>
             void OnDelete(object persister, DeleteEventArgs args) { }
+
+            /// <summary>
+            /// Called when the <c>Persister</c> experiences an unhandled
+            /// exception, likely from the execution of a callback which threw
+            /// an exception internally.
+            /// </summary>
+            /// <param name="persister">
+            /// The <c>Persister</c> which caught the unhandled exception after
+            /// executing some callback.
+            /// </param>
+            /// <param name="cause">
+            /// The exception that was thrown and caught by the <c>Persister</c>.
+            /// </param>
+            void OnUnhandled(object persister, UnhandledEventArgs cause) { }
         }
 
 
@@ -347,6 +378,20 @@ namespace Simular.Persist {
         /// executed when Unity calls the object to update again.
         /// </remarks>
         public static event EventHandler<DeleteEventArgs> OnDelete;
+
+
+        /// <summary>
+        /// An event which calls listeners who are subscribed to handling
+        /// exceptions that may not have been caught because it happened within
+        /// another event.
+        /// </summary>
+        /// <remarks>
+        /// Like the other events this one is called from a separate thread,
+        /// however this is only coincidental, since it's called if one of the
+        /// others throw. If a listener subscribed to this event throws when it
+        /// is called, there is no recovery option!
+        /// </remarks>
+        public static event EventHandler<UnhandledEventArgs> OnUnhandled;
 
 
         /// <summary>
@@ -670,6 +715,38 @@ namespace Simular.Persist {
         }
 
 
+        private void Internal_SafeInvoke(
+            PersistenceMethod method,
+            EventHandler      handler,
+            EventArgs         args
+        ) {
+            try {
+                handler?.Invoke(this, args);
+            } catch (Exception unhandled) {
+                OnUnhandled?.Invoke(this, new() {
+                    Cause = unhandled,
+                    Method = method
+                });
+            }
+        }
+
+
+        private void Internal_SafeInvoke<EventArgsT>(
+            PersistenceMethod        method,
+            EventHandler<EventArgsT> handler,
+            EventArgsT               args
+        ) {
+            try {
+                handler?.Invoke(this, args);
+            } catch (Exception unhandled) {
+                OnUnhandled?.Invoke(this, new() {
+                    Cause = unhandled,
+                    Method = method
+                });
+            }
+        }
+
+
         private void Internal_Load(bool mayBeEmpty, bool mayNotExist) {
             // Prep this.
             var loadArgs = new LoadEventArgs {
@@ -690,7 +767,7 @@ namespace Simular.Persist {
                     loadArgs.EmptyFile = true;
                     if (mayBeEmpty) {
                         m_Object = new();
-                        OnLoad?.Invoke(this, loadArgs);
+                        Internal_SafeInvoke(PersistenceMethod.Load, OnLoad, loadArgs);
                         return;
                     }
 
@@ -700,7 +777,7 @@ namespace Simular.Persist {
                         m_Settings.persistenceFile
                     );
 
-                    OnLoad?.Invoke(this, loadArgs);
+                    Internal_SafeInvoke(PersistenceMethod.Load, OnLoad, loadArgs);
                     return;
                 }
 
@@ -724,7 +801,7 @@ namespace Simular.Persist {
                 }
             }
 
-            OnLoad?.Invoke(this, loadArgs);
+            Internal_SafeInvoke(PersistenceMethod.Load, OnLoad, loadArgs);
         }
 
 
@@ -740,7 +817,7 @@ namespace Simular.Persist {
             if (count == 0) {
                 loadArgs.Problem = new PersistException("No backups available");
                 loadArgs.BackupIndex = loadArgs.BackupCount;
-                OnLoad?.Invoke(this, loadArgs);
+                Internal_SafeInvoke(PersistenceMethod.LoadBackup, OnLoad, loadArgs);
                 return;
             }
 
@@ -777,7 +854,7 @@ namespace Simular.Persist {
                 }
             }
 
-            OnLoad?.Invoke(this, loadArgs);
+            Internal_SafeInvoke(PersistenceMethod.LoadBackup, OnLoad, loadArgs);
         }
 
 
@@ -808,8 +885,7 @@ namespace Simular.Persist {
 
         private void Internal_Flush() {
             // Must call this for on demand save subscribers.
-            OnSave?.Invoke(this, EventArgs.Empty);
-
+            Internal_SafeInvoke(PersistenceMethod.Flush, OnSave, EventArgs.Empty);
             var flushArgs = new FlushEventArgs {
                 Problem     = null,
                 BackupCount = m_FileHandler.PersistenceBackups,
@@ -827,7 +903,7 @@ namespace Simular.Persist {
                 m_FileHandler.Write(result);
             } catch (Exception cause) {
                 flushArgs.Problem = new PersistException("Serialization Failed", cause);
-                OnFlush?.Invoke(this, flushArgs);
+                Internal_SafeInvoke(PersistenceMethod.Flush, OnFlush, flushArgs);
                 return; // Do not proceed to write backups.
             }
 
@@ -852,7 +928,7 @@ namespace Simular.Persist {
                 flushArgs.BackupIndex = index;
             }
 
-            OnFlush?.Invoke(this, flushArgs);
+            Internal_SafeInvoke(PersistenceMethod.Flush, OnFlush, flushArgs);
         }
 
 
@@ -869,7 +945,7 @@ namespace Simular.Persist {
                 deleteArgs.Problem = new PersistException("Deletion Failed", cause);
             }
 
-            OnDelete?.Invoke(this, deleteArgs);
+            Internal_SafeInvoke(PersistenceMethod.Delete, OnDelete, deleteArgs);
         }
 
 
@@ -886,7 +962,7 @@ namespace Simular.Persist {
                     "Invalid backup index",
                     new IndexOutOfRangeException()
                 );
-                OnDelete?.Invoke(this, deleteArgs);
+                Internal_SafeInvoke(PersistenceMethod.DeleteBackup, OnDelete, deleteArgs);
                 return;
             }
 
@@ -896,7 +972,7 @@ namespace Simular.Persist {
                 deleteArgs.Problem = new PersistException("Backup Deletion Failed", cause);
             }
 
-            OnDelete?.Invoke(this, deleteArgs);
+            Internal_SafeInvoke(PersistenceMethod.DeleteBackup, OnDelete, deleteArgs);
         }
 
 

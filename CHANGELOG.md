@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2024-06-05
+## [1.1.0] - 2024-05-07
+
+### Added
+
+- `Persister.OnUnhandled` to allow the catching and handling of exceptions within persistence events.
+- `Persister.Internal_SafeInvoke` to perform the persistence event unhandled exception catching.
+- Tests verifying the new `Persister.OnUnhandled` is working from all contexts it is called from.
+
+## [1.0.1] - 2024-05-06
 
 Some changes in this version are considered breaking and would normally consitute a new minor or major version, but since this is so new and it won't affect developers yet, we're gonna consider it a patch as a few of them were just wrong anyways, and their updated versions are the correct ones.
 
@@ -26,7 +34,7 @@ Some changes in this version are considered breaking and would normally consitut
 
 - `Persister.m_Dirty` and `Persister.IsLoaded` would cause issues for testing and typical use and were found to be unnecessary.
 
-## [1.0.0] - 2024-06-05
+## [1.0.0] - 2024-05-06
 
 ### Added
 
